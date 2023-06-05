@@ -5,7 +5,7 @@ export const registerController = async (req, res) => {
   try {
     const { name, email, password, phone, address } = req.body;
     //check user
-    const exisitingUser = await userModel.findOne({ email });
+    const exisitingUser = await userModel.findOne({ email: email });
     //exisiting user
     if (exisitingUser) {
       return res.status(200).send({

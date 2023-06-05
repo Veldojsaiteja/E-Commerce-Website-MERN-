@@ -1,50 +1,69 @@
 import productModel from "../models/productModel.js";
 import fs from "fs";
 import slugify from "slugify";
+import braintree from "braintree";
+import orderModel from "../models/orderModel.js";
+import dotenv from "dotenv";
+
+dotenv.config();
+//payment-gateway
+var gateway = new braintree.BraintreeGateway({
+  environment: braintree.Environment.Sandbox,
+  merchantId: process.env.MERCHANT_ID,
+  publicKey: process.env.PUBLIC_KEY,
+  privateKey: process.env.PRIVATE_KEY,
+});
 
 export const createProductController = async (req, res) => {
   try {
     const { name, description, price, category, quantity, shipping } =
       req.fields;
     const { photo } = req.files;
-    //alidation
-    switch (true) {
-      case !name:
-        return res.status(500).send({ error: "Name is Required" });
-      case !description:
-        return res.status(500).send({ error: "Description is Required" });
-      case !price:
-        return res.status(500).send({ error: "Price is Required" });
-      case !category:
-        return res.status(500).send({ error: "Category is Required" });
-      case !quantity:
-        return res.status(500).send({ error: "Quantity is Required" });
-      case photo && photo.size > 1000000:
-        return res
-          .status(500)
-          .send({ error: "photo is Required and should be less then 1mb" });
+
+    // Validation
+    if (!name || !description || !price || !category || !quantity) {
+      return res.status(400).send({ error: "All fields are required" });
     }
 
-    const products = new productModel({ ...req.fields, slug: slugify(name) });
+    if (photo && photo.size > 1000000) {
+      return res.status(400).send({ error: "Photo should be less than 1MB" });
+    }
+
+    const slug = slugify(name);
+
+    const products = new productModel({
+      name,
+      description,
+      price,
+      category,
+      quantity,
+      shipping,
+      slug,
+    });
+
     if (photo) {
       products.photo.data = fs.readFileSync(photo.path);
       products.photo.contentType = photo.type;
     }
+
     await products.save();
+
     res.status(201).send({
       success: true,
-      message: "Product Created Successfully",
-      products,
+      message: "Product created successfully",
+      product: products,
     });
   } catch (error) {
     console.log(error);
     res.status(500).send({
       success: false,
-      error,
+      error: error.message,
       message: "Error in creating product",
     });
   }
 };
+
+// Rest of the code remains the same...
 
 //get all products
 export const getProductController = async (req, res) => {
@@ -219,5 +238,49 @@ export const searchProductController = async (req, res) => {
       message: "Error In Search Product API",
       error,
     });
+  }
+};
+
+//payment
+
+//token
+export const tokenController = async (req, res) => {
+  try {
+    gateway.clientToken.generate({}, function (err, response) {
+      if (err) res.status(500).send(err);
+      else res.send(response);
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+//payments
+export const paymentController = async (req, res) => {
+  try {
+    const { cart, nonce } = req.body; //nonce is a default value send from front-end(mentioned in docs)
+    let total = 0;
+    cart.map((i) => (total += i.price));
+    let newTransaction = gateway.transaction.sale(
+      {
+        amount: total,
+        paymentMethodNonce: nonce,
+        options: {
+          submitForSettlement: true,
+        },
+      },
+      function (err, result) {
+        if (result) {
+          const order = new orderModel({
+            products: cart,
+            payment: result,
+            buyer: req.user?.id,
+          }).save();
+          res.json({ ok: true });
+        } else res.status(500).send(error);
+      }
+    );
+  } catch (error) {
+    console.log(error);
   }
 };

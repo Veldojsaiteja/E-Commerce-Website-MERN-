@@ -8,6 +8,8 @@ import {
   updateProductController,
   productFiltersController,
   searchProductController,
+  tokenController,
+  paymentController,
 } from "../controllers/productController.js";
 import formidable from "express-formidable";
 
@@ -38,5 +40,13 @@ router.post("/product-filters", productFiltersController);
 
 //search product
 router.get("/search/:keyword", searchProductController);
+
+//payment routes
+//token
+router.get("/braintree/token", tokenController);
+
+//payments
+
+router.post("/braintree/payment", paymentController);
 
 export default router;
